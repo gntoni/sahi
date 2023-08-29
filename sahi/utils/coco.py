@@ -188,6 +188,8 @@ class CocoAnnotation:
         category_name=None,
         image_id=None,
         iscrowd=0,
+        keypoints=None,
+        num_keypoints=None
     ):
         """
         Creates coco annotation object using bbox or segmentation
@@ -205,21 +207,31 @@ class CocoAnnotation:
                 Image ID of the annotation
             iscrowd: int
                 0 or 1
+            keypoints: List[int]
+                [x1,y1,v1,...]
+            num_keypoints: int
+                Number of labeled keypoints (v>0)
         """
-        if bbox is None and segmentation is None:
-            raise ValueError("you must provide a bbox or polygon")
+        if bbox is None and segmentation is None and keypoints is None:
+            raise ValueError("you must provide a bbox, polygon or keypoint")
 
+        self._bbox = bbox
         self._segmentation = segmentation
         self._category_id = category_id
         self._category_name = category_name
         self._image_id = image_id
         self._iscrowd = iscrowd
+        self._keypoints = keypoints
+        self._num_keypoints = num_keypoints
 
         if self._segmentation:
             shapely_annotation = ShapelyAnnotation.from_coco_segmentation(segmentation=self._segmentation)
-        else:
+            self._shapely_annotation = shapely_annotation
+        elif self._bbox:
             shapely_annotation = ShapelyAnnotation.from_coco_bbox(bbox=bbox)
-        self._shapely_annotation = shapely_annotation
+            self._shapely_annotation = shapely_annotation
+        else:
+            self._shapely_annotation = None
 
     def get_sliced_coco_annotation(self, slice_bbox: List[int]):
         shapely_polygon = box(slice_bbox[0], slice_bbox[1], slice_bbox[2], slice_bbox[3])
@@ -236,14 +248,20 @@ class CocoAnnotation:
         """
         Returns area of annotation polygon (or bbox if no polygon available)
         """
-        return self._shapely_annotation.area
+        if self._shapely_annotation is not None:
+            return self._shapely_annotation.area
+        else:
+            return None
 
     @property
     def bbox(self):
         """
         Returns coco formatted bbox of the annotation as [xmin, ymin, width, height]
         """
-        return self._shapely_annotation.to_xywh()
+        if self._bbox:
+            return self._shapely_annotation.to_xywh()
+        else:
+            return []
 
     @property
     def segmentation(self):
@@ -302,6 +320,20 @@ class CocoAnnotation:
         return self._iscrowd
 
     @property
+    def keypoints(self):
+        """
+        Returns keypoints list of the annotation
+        """
+        return self._keypoints
+
+    @property
+    def num_keypoints(self):
+        """
+        Returns num_keypoints info of the annotation
+        """
+        return self._num_keypoints
+
+    @property
     def json(self):
         return {
             "image_id": self.image_id,
@@ -310,6 +342,8 @@ class CocoAnnotation:
             "segmentation": self.segmentation,
             "iscrowd": self.iscrowd,
             "area": self.area,
+            "keypoints": self.keypoints,
+            "num_keiypoints": self.num_keypoints,
         }
 
     def serialize(self):
@@ -323,7 +357,9 @@ class CocoAnnotation:
     category_id: {self.category_id},
     category_name: {self.category_name},
     iscrowd: {self.iscrowd},
-    area: {self.area}>"""
+    area: {self.area},
+    keypoints: {self.keypoints},
+    num_keypoints: {self.num_keypoints}>"""
 
 
 class CocoPrediction(CocoAnnotation):
@@ -2013,6 +2049,8 @@ def create_coco_dict(images, categories, ignore_negative_samples=False, image_id
                     "category_id": coco_annotation.category_id,
                     "id": annotation_id,
                     "area": coco_annotation.area,
+                    "keypoints": coco_annotation.keypoints,
+                    "num_keypoints": coco_annotation.num_keypoints
                 }
                 coco_dict["annotations"].append(out_annotation)
                 # increment annotation id
